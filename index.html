@@ -196,7 +196,7 @@ tr.hl td{background:var(--amber-soft)}
 <header class="top">
   <div class="brand">
     <h1 id="title">자습실</h1>
-    <p>빈 좌석을 눌러 입실하고, 나갈 때는 내 좌석을 눌러 퇴실하세요.</p>
+    <p id="subTitle">빈 좌석을 눌러 입실하고, 나갈 때는 내 좌석을 눌러 퇴실하세요.</p>
   </div>
   <div class="stat">
     <div class="pill">빈 좌석 <b id="freeCnt">0</b></div>
@@ -293,6 +293,9 @@ tr.hl td{background:var(--amber-soft)}
 /* ================= 저장소 ================= */
 const KEY='studyroom.v1';
 /* SDH 자습실 기록 시트(구글 드라이브) 연동 웹앱 — 기본으로 연결됨 */
+/* ?view=monitor 로 열면 '보기 전용 원격 현황판' (구글 시트의 현재현황을 읽어서 표시) */
+const MON=new URLSearchParams(location.search).get('view')==='monitor';
+let remote=null; // {rows:[[좌석,위치,상태,이름,입실,이용시간,비고]], sentAt}
 const BUILTIN_SYNC='https://script.google.com/macros/s/AKfycbwCS5Ab3XRslJnU_uWD6T8IxhML0Hb1OUr5PXrujPbJioqfWxXYTqQAtmSL-99Q8tOxIQ/exec';
 const DEFAULTS={
   settings:{title:'SDH 자습실',layout:'room',seatCount:43,cols:9,closeTime:'00:00',openTime:'09:00',syncUrl:'',awayLimit:30,pin:'0000',disabled:[]},
@@ -351,6 +354,7 @@ function isClosed(at){
 const tLabel=t=>t==='00:00'?'밤 12시(자정)':t;
 const awayMs=()=>(+db.settings.awayLimit||30)*60000;
 function autoCheckout(){
+  if(MON) return;
   const now=Date.now(); let changed=false;
   for(const seat of Object.keys(db.active)){
     const s=byId(db.active[seat]);
@@ -384,6 +388,15 @@ function seatZone(n){
 function seatList(){return Array.from({length:isRoom()?43:db.settings.seatCount},(_,i)=>i+1);}
 function seatBtn(n,dis,extra){
   const pos=extra?` ${extra.cls}" style="grid-column:${extra.col};grid-row:${extra.row}`:'';
+  if(MON){
+    const r=remote&&remote.map[n];
+    const st=r?r[2]:'';
+    if(st==='사용 불가') return `<button class="seat off${pos}" disabled><span class="no">${n}</span><span class="st" style="color:var(--ink3)">사용 불가</span></button>`;
+    if(st==='사용 중') return `<button class="seat busy${pos}" disabled><span class="no">${n}</span><span><div class="nm">${esc(r[3])}</div><div class="tm">${esc(r[4])}~</div></span></button>`;
+    if(st==='자리 비움'){const back=(String(r[6]).match(/(\d{1,2}:\d{2})까지/)||[])[1]||'';
+      return `<button class="seat away${pos}" disabled><span class="no">${n}</span><span><div class="nm">${esc(r[3])}</div><div class="tm">비움${back?'·'+back+'까지':''}</div></span></button>`;}
+    return `<button class="seat${pos}" disabled style="cursor:default"><span class="no">${n}</span><span class="st">${r?'빈 좌석':'-'}</span></button>`;
+  }
   if(dis.has(n)) return `<button class="seat off${pos}" disabled><span class="no">${n}</span><span class="st" style="color:var(--ink3)">사용 불가</span></button>`;
   const sid=db.active[n]; const s=sid&&byId(sid);
   if(s&&s.away){const left=Math.ceil((s.away+awayMs()-Date.now())/60000);
@@ -394,12 +407,13 @@ function seatBtn(n,dis,extra){
 }
 function openReportSeats(){const set=new Set();db.reports.forEach(r=>{if(!r.resolved)set.add(r.seat);});return set;}
 function render(){
-  $('#title').textContent=db.settings.title||'자습실';
+  $('#title').textContent=(db.settings.title||'자습실')+(MON?' · 원격 현황판':'');
   document.title=(db.settings.title||'자습실')+' 좌석관리';
   const g=$('#grid'); g.style.setProperty('--cols',db.settings.cols);
   const dis=new Set(db.settings.disabled||[]);
   let free=0,busy=0,html='';
-  for(const n of seatList()){ if(dis.has(n)) continue; db.active[n]?busy++:free++; }
+  if(MON){ const rows=remote?remote.rows:[]; busy=rows.filter(r=>r[2]==='사용 중'||r[2]==='자리 비움').length; free=rows.filter(r=>r[2]==='빈 좌석').length; }
+  else for(const n of seatList()){ if(dis.has(n)) continue; db.active[n]?busy++:free++; }
   if(isRoom()){
     g.className='room';
     html+=`<div class="island"></div><div class="nook"></div>`;
@@ -411,9 +425,12 @@ function render(){
   }
   g.innerHTML=html; $('#freeCnt').textContent=free; $('#busyCnt').textContent=busy;
   const L=db.settings.awayLimit;
-  const rb=$('#ruleBar'); rb.classList.toggle('shut',isClosed());
+  const rb=$('#ruleBar');
+  if(MON){ monitorBar(rb); }
+  else { rb.classList.toggle('shut',isClosed());
   if(isClosed()) rb.innerHTML=`<b>지금은 자습실 운영 시간이 아닙니다.</b> ${db.settings.openTime}부터 입실할 수 있어요. 아직 자리에 있다면 퇴실은 할 수 있어요.`;
   else rb.innerHTML=`<b>${L}분 이상 자리를 비우면 자동 퇴실</b>됩니다. 식사·다른 학원 등으로 자리를 맡아 둘 수 없어요. 잠깐 나갈 땐 내 좌석을 눌러 '자리 비움'을 누르세요.`;
+  }
   $('#inRule').textContent=`${L}분 이상 자리를 비우면 자동 퇴실되며, 식사·다른 학원 등으로 자리를 맡아 둘 수 없다는 것을 알고 있습니다.`;
   $('#closeInfo').textContent='· 운영 '+db.settings.openTime+' ~ '+tLabel(db.settings.closeTime)+' · 마감까지 퇴실하지 않은 좌석은 자동 퇴실(미퇴실 기록)';
   const open=db.reports.filter(r=>!r.resolved).length;
@@ -745,6 +762,7 @@ function snapRows(){
 }
 function scheduleSync(){ if(!db.settings.syncUrl) return; clearTimeout(syncT); syncT=setTimeout(()=>syncNow(),1500); }
 async function syncNow(force){
+  if(MON) return null;
   const url=db.settings.syncUrl; if(!url||syncBusy) return null;
   const sess=db.sessions.filter(s=>s.syncSig!==sigOf(s)).slice(0,150);
   const reps=db.reports.filter(r=>r.syncSig!==repSig(r)).slice(0,100);
@@ -774,7 +792,7 @@ setInterval(()=>syncNow(),60000);
 
 /* ================= 자동 업데이트 =================
    웹 주소로 열었을 때만 동작: 5분마다 새 버전을 확인하고, 아무 창도 열려 있지 않을 때 새로고침 */
-const APP_VERSION='2026-11-23.3';
+const APP_VERSION='2026-11-23.4';
 async function checkUpdate(){
   if(!/^https?:/.test(location.protocol)) return;
   if(document.querySelector('.scrim.on')||$('#admin').classList.contains('on')) return;
@@ -787,7 +805,43 @@ async function checkUpdate(){
 }
 setInterval(checkUpdate,5*60000);
 
+/* ================= 원격 현황판 ================= */
+const VKEY='studyroom.viewkey';
+let monErr='';
+function getViewKey(){try{return localStorage.getItem(VKEY)||'';}catch(e){return '';}}
+function setViewKey(k){try{k?localStorage.setItem(VKEY,k):localStorage.removeItem(VKEY);}catch(e){}}
+function monitorBar(rb){
+  rb.classList.remove('shut');
+  if(monErr){rb.classList.add('shut');rb.innerHTML=`<b>현황을 불러오지 못했습니다.</b> ${esc(monErr)}`;return;}
+  if(!remote){rb.innerHTML='현황을 불러오는 중…';return;}
+  const t=remote.sentAt?new Date(remote.sentAt.replace(' ','T')).getTime():0;
+  const old=!t||Date.now()-t>12*60000;
+  if(old) rb.classList.add('shut');
+  rb.innerHTML=`<b>보기 전용 원격 현황판</b> · 태블릿 마지막 전송 ${esc(remote.sentAt||'-')} · 30초마다 새로 확인`+(old?' · <b>태블릿이 꺼져 있거나 인터넷 연결을 확인하세요</b>':'');
+}
+async function pollMonitor(){
+  let key=getViewKey();
+  if(!key){key=(prompt('원격 현황판 비밀번호를 입력하세요')||'').trim(); if(!key){monErr='비밀번호를 입력해야 볼 수 있어요. 새로고침 후 다시 입력하세요.';render();return;} setViewKey(key);}
+  try{
+    const r=await fetch(db.settings.syncUrl+'?key='+encodeURIComponent(key)+'&t='+Date.now());
+    const d=JSON.parse(await r.text());
+    if(d.error){ if(d.error==='bad key'){setViewKey('');monErr='비밀번호가 틀렸습니다. 새로고침 후 다시 입력하세요.';} else monErr=d.error; render(); return; }
+    const map={}; (d.rows||[]).forEach(x=>map[+x[0]]=x);
+    remote={rows:d.rows||[],sentAt:d.sentAt||'',map}; monErr='';
+  }catch(e){ monErr='인터넷 연결 또는 구글 시트 연동 코드(새 버전 배포)를 확인하세요.'; }
+  render();
+}
+function startMonitor(){
+  document.title='SDH 자습실 원격 현황';
+  $('#subTitle').textContent='보기 전용 화면입니다. 입실·퇴실은 자습실 태블릿에서만 할 수 있어요.';
+  $('#gearBtn').style.display='none';
+  render(); tick(); pollMonitor();
+  setInterval(tick,1000); setInterval(pollMonitor,30000);
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pollMonitor();});
+}
+
 /* ================= 시작 ================= */
+if(MON){ startMonitor(); return; }
 // 다른 탭/창에서 바뀐 내용 반영
 window.addEventListener('storage',e=>{if(e.key===KEY){load();render();}});
 // 화면 꺼짐 방지 (지원 브라우저만)
