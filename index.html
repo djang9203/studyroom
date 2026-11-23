@@ -292,6 +292,8 @@ tr.hl td{background:var(--amber-soft)}
 'use strict';
 /* ================= 저장소 ================= */
 const KEY='studyroom.v1';
+/* SDH 자습실 기록 시트(구글 드라이브) 연동 웹앱 — 기본으로 연결됨 */
+const BUILTIN_SYNC='https://script.google.com/macros/s/AKfycbwCS5Ab3XRslJnU_uWD6T8IxhML0Hb1OUr5PXrujPbJioqfWxXYTqQAtmSL-99Q8tOxIQ/exec';
 const DEFAULTS={
   settings:{title:'SDH 자습실',layout:'room',seatCount:43,cols:9,closeTime:'00:00',openTime:'09:00',syncUrl:'',awayLimit:30,pin:'0000',disabled:[]},
   active:{},      // seatNo -> sessionId
@@ -303,6 +305,7 @@ function load(){
   try{const raw=localStorage.getItem(KEY); db=raw?JSON.parse(raw):null;}catch(e){db=null;}
   if(!db) db=JSON.parse(JSON.stringify(DEFAULTS));
   db.settings=Object.assign({},DEFAULTS.settings,db.settings||{});
+  if(!db.settings.syncUrl) db.settings.syncUrl=BUILTIN_SYNC;
   db.active=db.active||{}; db.sessions=db.sessions||[]; db.reports=db.reports||[];
 }
 let saveFailed=false;
@@ -771,7 +774,7 @@ setInterval(()=>syncNow(),60000);
 
 /* ================= 자동 업데이트 =================
    웹 주소로 열었을 때만 동작: 5분마다 새 버전을 확인하고, 아무 창도 열려 있지 않을 때 새로고침 */
-const APP_VERSION='2026-11-23.2';
+const APP_VERSION='2026-11-23.3';
 async function checkUpdate(){
   if(!/^https?:/.test(location.protocol)) return;
   if(document.querySelector('.scrim.on')||$('#admin').classList.contains('on')) return;
