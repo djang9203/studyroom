@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>자습실 좌석관리</title>
+<style>
+:root{
+  --bg:#f4f2ee; --panel:#ffffff; --ink:#1d1f24; --ink2:#5b606b; --ink3:#9aa0aa;
+  --line:#e3e0da; --accent:#1f6f5c; --accent-ink:#ffffff; --accent-soft:#e3f1ec;
+  --busy:#2b3440; --busy-ink:#ffffff; --busy-sub:#b9c2cf;
+  --warn:#c0412b; --warn-soft:#fbe9e5; --amber:#b7791f; --amber-soft:#fdf3e1;
+  --radius:16px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;-webkit-user-select:none;user-select:none;overflow:hidden}
+input,textarea,select{-webkit-user-select:text;user-select:text;font:inherit}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+
+/* ---------- 상단 ---------- */
+.top{display:flex;align-items:center;justify-content:space-between;padding:18px 28px 10px;gap:16px}
+.brand h1{margin:0;font-size:26px;font-weight:800;letter-spacing:-.5px}
+.brand p{margin:4px 0 0;color:var(--ink2);font-size:15px}
+.stat{display:flex;gap:10px;align-items:center}
+.pill{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:10px 18px;font-size:16px;font-weight:600;white-space:nowrap}
+.pill b{color:var(--accent);font-size:20px}
+.clock{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px;text-align:right}
+.clock small{display:block;font-size:14px;font-weight:500;color:var(--ink2);letter-spacing:0}
+.gear{width:44px;height:44px;border-radius:12px;color:var(--ink3);display:grid;place-items:center}
+.gear:active{background:var(--line)}
+
+.legend{display:flex;gap:18px;padding:0 28px 10px;color:var(--ink2);font-size:14px}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;margin-right:6px}
+
+/* ---------- 좌석 ---------- */
+.wrap{height:calc(100% - 160px);overflow:auto;padding:4px 28px 28px}
+.grid{display:grid;gap:10px;grid-template-columns:repeat(var(--cols,9),minmax(0,1fr))}
+.seat{position:relative;background:var(--panel);border:2px solid var(--line);border-radius:var(--radius);min-height:96px;padding:10px 12px;text-align:left;display:flex;flex-direction:column;justify-content:space-between;transition:transform .08s}
+.seat:active{transform:scale(.96)}
+.seat .no{font-size:26px;font-weight:800;line-height:1}
+.seat .st{font-size:13px;color:var(--accent);font-weight:700}
+.seat.busy{background:var(--busy);border-color:var(--busy);color:var(--busy-ink)}
+.seat.busy .nm{font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seat.busy .tm{font-size:12.5px;color:var(--busy-sub);font-variant-numeric:tabular-nums}
+.seat .flag{position:absolute;top:8px;right:10px;font-size:11px;font-weight:700;background:var(--warn);color:#fff;border-radius:6px;padding:2px 6px}
+.seat.off{background:transparent;border-style:dashed;color:var(--ink3)}
+.seat.shut{background:#f1efeb;color:var(--ink3)}
+.seat.shut .st{color:var(--ink3)}
+.rule.shut{background:var(--busy);color:#fff}
+.rule.shut b{color:#ffd88a}
+.seat.away{background:var(--amber-soft);border-color:var(--amber);color:var(--ink)}
+.seat.away .tm{color:var(--amber);font-weight:700;font-size:12.5px}
+.seat.away .nm{font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seat.away.late{background:var(--warn-soft);border-color:var(--warn)}
+.seat.away.late .tm{color:var(--warn)}
+.rule{margin:0 28px 10px;background:var(--amber-soft);color:#7a4f12;border-radius:12px;padding:9px 16px;font-size:14.5px;font-weight:600;line-height:1.5}
+.rule b{color:var(--warn)}
+.bigbtn{width:100%;font-size:19px;font-weight:700;padding:17px;border-radius:14px;margin-bottom:6px}
+.bigbtn.away{background:var(--amber);color:#fff}
+.bigbtn.back{background:var(--accent);color:#fff}
+.sep{display:flex;align-items:center;gap:10px;color:var(--ink3);font-size:13px;font-weight:600;margin:18px 0 12px}
+.sep::before,.sep::after{content:"";flex:1;height:1px;background:var(--line)}
+@media (max-width:900px){.rule{margin:0 16px 8px;font-size:13px}}
+
+/* ---------- 실제 배치도 ---------- */
+/* 도면: 가로 10.3m × 세로 5.5m — 위쪽 벽 12 · 가운데 섬 10+10 (등 맞댐) · 아래쪽 벽 11 · 출입문 오른쪽 아래 */
+.roomwrap{height:100%;min-height:520px;display:flex;flex-direction:column}
+.room{height:100%;min-height:470px;display:grid;gap:0 6px;position:relative;
+  grid-template-columns:repeat(12,minmax(0,1fr)) minmax(0,.8fr);
+  grid-template-rows:minmax(0,1fr) minmax(0,1.25fr) minmax(0,1fr) 4px minmax(0,1fr) minmax(0,1.25fr) minmax(0,1fr);
+  background:#ebe8e2;border:7px solid var(--busy);border-radius:6px;padding:0 6px}
+.room .seat{min-height:0;padding:6px 8px;border-radius:6px;border-width:2px;overflow:visible}
+.room .seat .no{font-size:19px}
+.room .seat .st{font-size:12px}
+.room .seat.busy .nm,.room .seat.away .nm{font-size:15px;line-height:1.25}
+.room .seat.busy .tm,.room .seat.away .tm{font-size:11px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.room .seat>span:last-child{min-width:0;width:100%}
+.room .seat.r-top{border-top-left-radius:0;border-top-right-radius:0;border-top-color:transparent}
+.room .seat.r-bot{border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom-color:transparent}
+/* 의자 */
+.room .seat::after{content:"";position:absolute;left:50%;transform:translateX(-50%);width:66%;height:clamp(26px,42%,46px);background:#fff;border:2px solid #b3ada2}
+.room .seat.cd::after{top:calc(100% + 6px);border-radius:6px 6px 50% 50%/6px 6px 70% 70%;border-bottom-width:6px}
+.room .seat.cu::after{bottom:calc(100% + 6px);border-radius:50% 50% 6px 6px/70% 70% 6px 6px;border-top-width:6px}
+.room .seat.busy::after{background:var(--busy);border-color:var(--busy)}
+.room .seat.away::after{background:var(--amber-soft);border-color:var(--amber)}
+.room .seat.off::after{border-style:dashed}
+.room .island{grid-column:2/12;grid-row:4;background:var(--busy);border-radius:2px;margin:0 -2px}
+.room .nook{grid-column:13;grid-row:1;background:repeating-linear-gradient(45deg,#ddd8cf 0 6px,#e6e2da 6px 12px);border-radius:0 0 6px 6px;margin:0 -6px 0 0;height:62%}
+.room .door{grid-column:12/14;grid-row:6/8;position:relative;margin-right:-6px}
+.room .door svg{position:absolute;right:0;bottom:0;width:78%;height:auto;max-height:100%}
+.room .door::after{content:"";position:absolute;left:8%;right:-7px;bottom:-7px;height:7px;background:var(--bg)}
+.room .door b{position:absolute;right:10px;bottom:12px;color:var(--accent);font-size:14px;font-weight:800}
+.room .zl{position:absolute;font-size:11px;font-weight:700;color:var(--ink3);letter-spacing:.3px;pointer-events:none}
+@media (max-width:900px){.room{gap:0 4px}.room .seat{padding:5px}.room .seat .no{font-size:16px}.room .seat .st,.room .seat.busy .tm{display:none}.room .seat.busy .nm,.room .seat.away .nm{font-size:12.5px}.room .seat.away .tm{font-size:10px}.room .door b{font-size:11px}}
+
+/* ---------- 모달 ---------- */
+.scrim{position:fixed;inset:0;background:rgba(20,22,26,.45);display:none;align-items:center;justify-content:center;z-index:20;padding:20px}
+.scrim.on{display:flex}
+.modal{background:var(--panel);border-radius:22px;width:min(560px,100%);max-height:calc(100% - 20px);overflow:auto;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal h2{margin:0 0 4px;font-size:26px;letter-spacing:-.5px}
+.modal .sub{margin:0 0 20px;color:var(--ink2);font-size:15px}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:14px;font-weight:700;color:var(--ink2);margin-bottom:6px}
+.inp{width:100%;font-size:22px;padding:14px 16px;border:2px solid var(--line);border-radius:14px;background:#fff;color:var(--ink);outline:none}
+.inp:focus{border-color:var(--accent)}
+textarea.inp{font-size:17px;min-height:84px;resize:none}
+.check{display:flex;gap:12px;align-items:flex-start;background:var(--accent-soft);border-radius:14px;padding:14px 16px;font-size:16px;line-height:1.45;cursor:pointer;margin-bottom:12px}
+.check input{width:24px;height:24px;margin:1px 0 0;accent-color:var(--accent);flex:none}
+.report-toggle{color:var(--warn);font-weight:700;font-size:15px;padding:6px 2px;text-decoration:underline;text-underline-offset:3px}
+.report-box{display:none;background:var(--warn-soft);border-radius:14px;padding:14px 16px;margin:8px 0 6px}
+.report-box.on{display:block}
+.report-box p{margin:0 0 10px;font-size:14px;color:var(--warn);font-weight:600;line-height:1.45}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.chip{border:1.5px solid #e6b8ae;background:#fff;color:var(--warn);border-radius:999px;padding:8px 14px;font-size:15px;font-weight:600}
+.chip.on{background:var(--warn);color:#fff;border-color:var(--warn)}
+.actions{display:flex;gap:10px;margin-top:20px}
+.btn{flex:1;font-size:19px;font-weight:700;padding:17px;border-radius:14px;background:var(--line);color:var(--ink)}
+.btn.pri{background:var(--accent);color:var(--accent-ink)}
+.btn.dan{background:var(--warn);color:#fff}
+.btn:disabled{opacity:.35}
+.info{background:var(--bg);border-radius:14px;padding:16px;margin-bottom:16px;font-size:16px;line-height:1.7}
+.info b{font-size:20px}
+.err{color:var(--warn);font-size:14px;font-weight:600;min-height:20px;margin-top:-6px;margin-bottom:6px}
+
+/* PIN */
+.pin-dots{display:flex;gap:14px;justify-content:center;margin:10px 0 20px}
+.pin-dots span{width:18px;height:18px;border-radius:50%;border:2px solid var(--ink3)}
+.pin-dots span.f{background:var(--ink);border-color:var(--ink)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.pad button{font-size:26px;font-weight:700;padding:16px;border-radius:14px;background:var(--bg)}
+.pad button:active{background:var(--line)}
+
+/* 토스트 */
+.toast{position:fixed;left:50%;bottom:36px;transform:translateX(-50%) translateY(30px);background:var(--ink);color:#fff;padding:16px 26px;border-radius:14px;font-size:18px;font-weight:600;opacity:0;transition:.25s;z-index:50;pointer-events:none;white-space:nowrap}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ---------- 관리자 ---------- */
+.admin{position:fixed;inset:0;background:var(--bg);z-index:30;display:none;flex-direction:column}
+.admin.on{display:flex}
+.ahead{display:flex;align-items:center;gap:12px;padding:16px 24px;border-bottom:1px solid var(--line);background:var(--panel)}
+.ahead h2{margin:0;font-size:21px;flex:none}
+.tabs{display:flex;gap:4px;flex:1;overflow:auto}
+.tab{padding:10px 16px;border-radius:10px;font-size:16px;font-weight:600;color:var(--ink2);white-space:nowrap}
+.tab.on{background:var(--ink);color:#fff}
+.tab .cnt{display:inline-block;background:var(--warn);color:#fff;border-radius:999px;font-size:12px;padding:1px 7px;margin-left:4px}
+.abody{flex:1;overflow:auto;padding:20px 24px 40px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:16px}
+.card h3{margin:0 0 12px;font-size:17px}
+.filters{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:14px}
+.filters .f label{display:block;font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:4px}
+.sm{font-size:16px;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);min-width:0}
+.sbtn{font-size:15px;font-weight:700;padding:11px 16px;border-radius:10px;background:var(--line);white-space:nowrap}
+.sbtn.pri{background:var(--accent);color:#fff}
+.sbtn.dan{background:var(--warn-soft);color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th{text-align:left;font-size:13px;color:var(--ink2);font-weight:700;padding:8px 10px;border-bottom:2px solid var(--line);white-space:nowrap}
+td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top;font-variant-numeric:tabular-nums}
+tr.hl td{background:var(--amber-soft)}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:6px;margin:1px 2px 1px 0}
+.tag.auto{background:var(--amber-soft);color:var(--amber)}
+.tag.adm{background:#e8ebf0;color:#4a5260}
+.tag.rep{background:var(--warn-soft);color:var(--warn)}
+.tag.live{background:var(--accent-soft);color:var(--accent)}
+.empty{color:var(--ink3);text-align:center;padding:30px 0;font-size:15px}
+.seatpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:6px}
+.seatpick button{padding:10px 0;border-radius:10px;background:var(--bg);font-weight:700;font-size:16px}
+.seatpick button.on{background:var(--ink);color:#fff}
+.seatpick button.r{box-shadow:inset 0 0 0 2px var(--warn)}
+.rep-item{border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:10px;background:var(--panel)}
+.rep-item.done{opacity:.55}
+.rep-item .hd{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px}
+.rep-item .hd b{font-size:18px}
+.rep-item .memo{font-size:16px;margin:6px 0 10px;line-height:1.5}
+.prev{background:var(--amber-soft);border-radius:10px;padding:10px 12px;font-size:15px;line-height:1.6}
+.prev b{color:var(--amber)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.set{display:grid;grid-template-columns:180px 1fr;gap:12px 16px;align-items:center}
+.set label{font-weight:600;font-size:15px}
+.hint{font-size:13px;color:var(--ink2);margin-top:4px;line-height:1.5}
+
+@media (max-width:900px){
+  .top{padding:14px 16px 8px}.legend,.wrap{padding-left:16px;padding-right:16px}
+  .brand h1{font-size:21px}.clock{font-size:22px}.pill{padding:8px 12px;font-size:14px}
+  .seat{min-height:84px;padding:8px}.seat .no{font-size:21px}.seat.busy .nm{font-size:15px}
+  .set{grid-template-columns:1fr}
+  .abody{padding:14px 16px 40px}.ahead{padding:12px 16px;flex-wrap:wrap}
+}
+@media (max-width:600px){.stat .pill:nth-child(2){display:none}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <h1 id="title">자습실</h1>
+    <p>빈 좌석을 눌러 입실하고, 나갈 때는 내 좌석을 눌러 퇴실하세요.</p>
+  </div>
+  <div class="stat">
+    <div class="pill">빈 좌석 <b id="freeCnt">0</b></div>
+    <div class="pill">사용 중 <b id="busyCnt" style="color:var(--busy)">0</b></div>
+    <div class="clock" id="clock">--:--<small>-</small></div>
+    <button class="gear" id="gearBtn" aria-label="관리자">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+</header>
+<div class="legend">
+  <span><i style="background:#fff;border:2px solid var(--line)"></i>빈 좌석</span>
+  <span><i style="background:var(--busy)"></i>사용 중</span>
+  <span><i style="background:var(--amber-soft);border:2px solid var(--amber)"></i>잠깐 자리 비움</span>
+  <span id="closeInfo"></span>
+</div>
+<div class="rule" id="ruleBar"></div>
+<main class="wrap"><div class="grid" id="grid"></div></main>
+
+<!-- 입실 -->
+<div class="scrim" id="inModal">
+  <div class="modal">
+    <h2><span id="inSeat"></span>번 좌석 입실 <small id="inZone" style="font-size:15px;color:var(--ink2);font-weight:600"></small></h2>
+    <p class="sub">이름을 적고, 앉기 전에 책상 상태를 꼭 확인해 주세요.</p>
+    <div class="field">
+      <label for="inName">이름</label>
+      <input class="inp" id="inName" maxlength="20" autocomplete="off" placeholder="예) 김서연">
+    </div>
+    <div class="err" id="inErr"></div>
+    <label class="check"><input type="checkbox" id="inAgree"><span>책상·의자 상태를 확인했습니다. 사용하는 동안 깨끗하게 쓰고, 책임지고 정리하겠습니다.<br><b style="color:var(--warn)" id="inRule"></b></span></label>
+    <button class="report-toggle" id="repToggle">책상에 낙서·쓰레기·파손이 있나요? 지금 신고하기</button>
+    <div class="report-box" id="repBox">
+      <p>앉기 전에 신고하면 이전 사용자의 책임으로 기록됩니다. 신고하지 않으면 지금부터 생긴 문제는 본인 책임이 돼요.</p>
+      <div class="chips" id="repChips"></div>
+      <textarea class="inp" id="repMemo" maxlength="200" placeholder="어떤 문제가 있는지 적어 주세요 (선택)"></textarea>
+    </div>
+    <div class="actions">
+      <button class="btn" data-close>취소</button>
+      <button class="btn pri" id="inOk" disabled>입실하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 퇴실 -->
+<div class="scrim" id="outModal">
+  <div class="modal">
+    <h2><span id="outSeat"></span>번 좌석</h2>
+    <p class="sub">본인 좌석이 맞는지 확인해 주세요.</p>
+    <div class="info" id="outInfo"></div>
+    <div id="awayArea"></div>
+    <div class="sep">완전히 나가는 경우</div>
+    <label class="check"><input type="checkbox" id="outAgree"><span>쓰레기를 치우고 책상·의자를 정리했습니다.</span></label>
+    <div class="actions">
+      <button class="btn" data-close>취소</button>
+      <button class="btn dan" id="outOk" disabled>퇴실하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- PIN -->
+<div class="scrim" id="pinModal">
+  <div class="modal" style="width:min(380px,100%)">
+    <h2 style="text-align:center">관리자</h2>
+    <p class="sub" style="text-align:center;margin-bottom:6px">비밀번호 4자리</p>
+    <div class="pin-dots" id="pinDots"><span></span><span></span><span></span><span></span></div>
+    <div class="err" id="pinErr" style="text-align:center"></div>
+    <div class="pad" id="pad"></div>
+    <div class="actions"><button class="btn" data-close>닫기</button></div>
+  </div>
+</div>
+
+<!-- 관리자 화면 -->
+<section class="admin" id="admin">
+  <div class="ahead">
+    <h2>관리자</h2>
+    <div class="tabs" id="tabs">
+      <button class="tab on" data-tab="now">현재 현황</button>
+      <button class="tab" data-tab="log">이용 기록</button>
+      <button class="tab" data-tab="seat">좌석별 조회</button>
+      <button class="tab" data-tab="rep">신고 내역<span class="cnt" id="repCnt" hidden></span></button>
+      <button class="tab" data-tab="set">설정·백업</button>
+    </div>
+    <button class="sbtn pri" id="adminClose">닫기</button>
+  </div>
+  <div class="abody" id="abody"></div>
+</section>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="restoreFile" accept=".json,application/json" hidden>
+
+<script>
+(function(){
+'use strict';
+/* ================= 저장소 ================= */
+const KEY='studyroom.v1';
+const DEFAULTS={
+  settings:{title:'SDH 자습실',layout:'room',seatCount:43,cols:9,closeTime:'00:00',openTime:'09:00',awayLimit:30,pin:'0000',disabled:[]},
+  active:{},      // seatNo -> sessionId
+  sessions:[],    // {id,seat,name,start,end,endType}
+  reports:[]      // {id,seat,time,name,sessionId,types[],memo,resolved}
+};
+let db;
+function load(){
+  try{const raw=localStorage.getItem(KEY); db=raw?JSON.parse(raw):null;}catch(e){db=null;}
+  if(!db) db=JSON.parse(JSON.stringify(DEFAULTS));
+  db.settings=Object.assign({},DEFAULTS.settings,db.settings||{});
+  db.active=db.active||{}; db.sessions=db.sessions||[]; db.reports=db.reports||[];
+}
+let saveFailed=false;
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify(db)); saveFailed=false;}
+  catch(e){ if(!saveFailed){saveFailed=true; toast('⚠ 저장 실패: 관리자에게 알려주세요');} }
+}
+load();
+
+/* ================= 유틸 ================= */
+const $=s=>document.querySelector(s);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad2=n=>String(n).padStart(2,'0');
+const DOW=['일','월','화','수','목','금','토'];
+const hm=t=>{const d=new Date(t);return pad2(d.getHours())+':'+pad2(d.getMinutes());};
+const ymd=t=>{const d=new Date(t);return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());};
+const md=t=>{const d=new Date(t);return (d.getMonth()+1)+'/'+d.getDate()+'('+DOW[d.getDay()]+')';};
+const dur=ms=>{const m=Math.max(0,Math.round(ms/60000));const h=Math.floor(m/60);return h?h+'시간 '+(m%60)+'분':(m%60)+'분';};
+const byId=id=>db.sessions.find(s=>s.id===id);
+const normName=s=>s.replace(/\s+/g,'').toLowerCase();
+const REP_TYPES=['낙서','쓰레기','음식물·얼룩','지우개 가루','파손','기타'];
+let toastT;
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2600);}
+
+/* ================= 자동 퇴실 ================= */
+function cutoffFor(start){
+  const [h,m]=(db.settings.closeTime||'00:00').split(':').map(Number);
+  const c=new Date(start); c.setHours(h,m,0,0);
+  if(c.getTime()<=start) c.setDate(c.getDate()+1);
+  return c.getTime();
+}
+/* 운영 시간: 자동 퇴실 시각(closeTime) ~ 여는 시각(openTime) 사이에는 입실 불가 */
+const toMin=t=>{const [h,m]=String(t||'00:00').split(':').map(Number);return h*60+m;};
+function isClosed(at){
+  const cm=toMin(db.settings.closeTime), om=toMin(db.settings.openTime);
+  if(cm===om) return false;
+  const d=new Date(at||Date.now()), t=d.getHours()*60+d.getMinutes();
+  return cm<om ? (t>=cm&&t<om) : (t>=cm||t<om);
+}
+const tLabel=t=>t==='00:00'?'밤 12시(자정)':t;
+const awayMs=()=>(+db.settings.awayLimit||30)*60000;
+function autoCheckout(){
+  const now=Date.now(); let changed=false;
+  for(const seat of Object.keys(db.active)){
+    const s=byId(db.active[seat]);
+    if(!s){delete db.active[seat];changed=true;continue;}
+    const c=cutoffFor(s.start);
+    const awayEnd=s.away?s.away+awayMs():Infinity;
+    if(now>=Math.min(c,awayEnd)){
+      if(awayEnd<=c){s.end=awayEnd;s.endType='away';(s.awayLog=s.awayLog||[]).push({start:s.away,end:awayEnd});}
+      else{s.end=c;s.endType='auto';}
+      s.away=null; delete db.active[seat];changed=true;
+    }
+  }
+  if(changed){save();render();}
+}
+
+/* ================= 좌석 화면 ================= */
+/* 도면 배치 — 출입문(오른쪽 아래)에서 가까운 줄부터, 각 줄은 오른쪽 → 왼쪽
+   아래쪽 벽 1~11 · 가운데 섬 아래 12~21 · 가운데 섬 위 22~31 · 위쪽 벽 32~43 */
+const ROOM=[
+  {name:'아래쪽 벽',     row:7, colStart:11, from:1,  count:11, cls:'r-bot cu'},
+  {name:'가운데 섬 아래', row:5, colStart:11, from:12, count:10, cls:'r-top cd'},
+  {name:'가운데 섬 위',   row:3, colStart:11, from:22, count:10, cls:'r-bot cu'},
+  {name:'위쪽 벽',       row:1, colStart:12, from:32, count:12, cls:'r-top cd'}
+];
+const isRoom=()=>db.settings.layout==='room';
+function seatZone(n){
+  if(!isRoom()) return '';
+  const z=ROOM.find(z=>n>=z.from&&n<z.from+z.count);
+  return z?`${z.name} · 출입문 쪽에서 ${n-z.from+1}번째`:'';
+}
+function seatList(){return Array.from({length:isRoom()?43:db.settings.seatCount},(_,i)=>i+1);}
+function seatBtn(n,dis,extra){
+  const pos=extra?` ${extra.cls}" style="grid-column:${extra.col};grid-row:${extra.row}`:'';
+  if(dis.has(n)) return `<button class="seat off${pos}" disabled><span class="no">${n}</span><span class="st" style="color:var(--ink3)">사용 불가</span></button>`;
+  const sid=db.active[n]; const s=sid&&byId(sid);
+  if(s&&s.away){const left=Math.ceil((s.away+awayMs()-Date.now())/60000);
+    return `<button class="seat away${left<=5?' late':''}${pos}" data-seat="${n}"><span class="no">${n}</span><span><div class="nm">${esc(s.name)}</div><div class="tm">비움·${Math.max(0,left)}분</div></span></button>`;}
+  if(s) return `<button class="seat busy${pos}" data-seat="${n}"><span class="no">${n}</span><span><div class="nm">${esc(s.name)}</div><div class="tm">${hm(s.start)}~ · ${dur(Date.now()-s.start)}</div></span></button>`;
+  if(isClosed()) return `<button class="seat shut${pos}" data-seat="${n}"><span class="no">${n}</span><span class="st">운영 종료</span></button>`;
+  return `<button class="seat${pos}" data-seat="${n}"><span class="no">${n}</span><span class="st">입실 가능</span></button>`;
+}
+function openReportSeats(){const set=new Set();db.reports.forEach(r=>{if(!r.resolved)set.add(r.seat);});return set;}
+function render(){
+  $('#title').textContent=db.settings.title||'자습실';
+  document.title=(db.settings.title||'자습실')+' 좌석관리';
+  const g=$('#grid'); g.style.setProperty('--cols',db.settings.cols);
+  const dis=new Set(db.settings.disabled||[]);
+  let free=0,busy=0,html='';
+  for(const n of seatList()){ if(dis.has(n)) continue; db.active[n]?busy++:free++; }
+  if(isRoom()){
+    g.className='room';
+    html+=`<div class="island"></div><div class="nook"></div>`;
+    html+=`<div class="door"><svg viewBox="0 0 100 100" preserveAspectRatio="xMaxYMax meet"><path d="M8 100 A92 92 0 0 1 100 8" fill="none" stroke="#1f6f5c" stroke-width="2.5" stroke-dasharray="5 4"/><line x1="100" y1="8" x2="100" y2="100" stroke="#1f6f5c" stroke-width="5"/></svg><b>출입문</b></div>`;
+    for(const z of ROOM) for(let i=0;i<z.count;i++){const n=z.from+i; html+=seatBtn(n,dis,{col:z.colStart-i,row:z.row,cls:z.cls});}
+  }else{
+    g.className='grid';
+    for(const n of seatList()) html+=seatBtn(n,dis);
+  }
+  g.innerHTML=html; $('#freeCnt').textContent=free; $('#busyCnt').textContent=busy;
+  const L=db.settings.awayLimit;
+  const rb=$('#ruleBar'); rb.classList.toggle('shut',isClosed());
+  if(isClosed()) rb.innerHTML=`<b>지금은 자습실 운영 시간이 아닙니다.</b> ${db.settings.openTime}부터 입실할 수 있어요. 아직 자리에 있다면 퇴실은 할 수 있어요.`;
+  else rb.innerHTML=`<b>${L}분 이상 자리를 비우면 자동 퇴실</b>됩니다. 식사·다른 학원 등으로 자리를 맡아 둘 수 없어요. 잠깐 나갈 땐 내 좌석을 눌러 '자리 비움'을 누르세요.`;
+  $('#inRule').textContent=`${L}분 이상 자리를 비우면 자동 퇴실되며, 식사·다른 학원 등으로 자리를 맡아 둘 수 없다는 것을 알고 있습니다.`;
+  $('#closeInfo').textContent='· 운영 '+db.settings.openTime+' ~ '+tLabel(db.settings.closeTime)+' · 마감까지 퇴실하지 않은 좌석은 자동 퇴실(미퇴실 기록)';
+  const open=db.reports.filter(r=>!r.resolved).length;
+  const rc=$('#repCnt'); rc.hidden=!open; rc.textContent=open;
+}
+function tick(){
+  const d=new Date();
+  $('#clock').innerHTML=pad2(d.getHours())+':'+pad2(d.getMinutes())+`<small>${d.getMonth()+1}월 ${d.getDate()}일 ${DOW[d.getDay()]}요일</small>`;
+}
+$('#grid').addEventListener('click',e=>{
+  const b=e.target.closest('[data-seat]'); if(!b) return;
+  const n=+b.dataset.seat;
+  if(db.active[n]) openOut(n);
+  else if(isClosed()) toast(`지금은 운영 시간이 아닙니다 · ${db.settings.openTime}부터 입실 가능`);
+  else openIn(n);
+});
+
+/* ================= 모달 공통 ================= */
+let idleT;
+function show(id){document.querySelectorAll('.scrim').forEach(s=>s.classList.remove('on'));$(id).classList.add('on');armIdle();}
+function closeModals(){document.querySelectorAll('.scrim').forEach(s=>s.classList.remove('on'));clearTimeout(idleT);document.activeElement&&document.activeElement.blur();}
+function armIdle(){clearTimeout(idleT);idleT=setTimeout(closeModals,90000);}
+document.addEventListener('pointerdown',()=>{if(document.querySelector('.scrim.on'))armIdle();});
+document.addEventListener('input',()=>{if(document.querySelector('.scrim.on'))armIdle();});
+document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',closeModals));
+document.querySelectorAll('.scrim').forEach(s=>s.addEventListener('click',e=>{if(e.target===s)closeModals();}));
+
+/* ================= 입실 ================= */
+let inSeat=0, repTypes=new Set();
+$('#repChips').innerHTML=REP_TYPES.map(t=>`<button class="chip" data-t="${t}">${t}</button>`).join('');
+$('#repChips').addEventListener('click',e=>{const c=e.target.closest('.chip');if(!c)return;const t=c.dataset.t;repTypes.has(t)?repTypes.delete(t):repTypes.add(t);c.classList.toggle('on');});
+$('#repToggle').addEventListener('click',()=>$('#repBox').classList.toggle('on'));
+function openIn(n){
+  inSeat=n; repTypes.clear();
+  $('#inSeat').textContent=n; $('#inZone').textContent=seatZone(n)?`(${seatZone(n)})`:''; $('#inName').value=''; $('#inAgree').checked=false; $('#inErr').textContent='';
+  $('#repBox').classList.remove('on'); $('#repMemo').value='';
+  document.querySelectorAll('#repChips .chip').forEach(c=>c.classList.remove('on'));
+  validIn(); show('#inModal'); setTimeout(()=>$('#inName').focus(),80);
+}
+function validIn(){$('#inOk').disabled=!($('#inName').value.trim().length>=2&&$('#inAgree').checked);}
+$('#inName').addEventListener('input',()=>{$('#inErr').textContent='';validIn();});
+$('#inAgree').addEventListener('change',validIn);
+$('#inName').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#inName').blur();}});
+$('#inOk').addEventListener('click',()=>{
+  const name=$('#inName').value.trim().replace(/\s+/g,' ');
+  if(name.length<2){$('#inErr').textContent='이름을 2글자 이상 적어 주세요.';return;}
+  if(isClosed()){toast(`지금은 운영 시간이 아닙니다 · ${db.settings.openTime}부터 입실 가능`);closeModals();render();return;}
+  if(db.active[inSeat]){toast('이미 다른 사람이 입실한 좌석입니다');closeModals();render();return;}
+  // 같은 이름이 다른 좌석에 있으면 차단
+  const dup=Object.entries(db.active).find(([,sid])=>{const s=byId(sid);return s&&normName(s.name)===normName(name);});
+  if(dup && !$('#inOk').dataset.force){
+    $('#inErr').textContent=`'${name}' 이름으로 ${dup[0]}번 좌석이 사용 중입니다. 자리를 옮기는 거라면 한 번 더 누르세요(기존 좌석 자동 퇴실).`;
+    $('#inOk').dataset.force=dup[0]; return;
+  }
+  const now=Date.now();
+  if($('#inOk').dataset.force){
+    const old=$('#inOk').dataset.force; const s=byId(db.active[old]);
+    if(s){s.end=now;s.endType='move';} delete db.active[old];
+  }
+  delete $('#inOk').dataset.force;
+  const s={id:uid(),seat:inSeat,name,start:now,end:null,endType:null};
+  db.sessions.push(s); db.active[inSeat]=s.id;
+  const memo=$('#repMemo').value.trim();
+  if(repTypes.size||memo){
+    db.reports.push({id:uid(),seat:inSeat,time:now,name,sessionId:s.id,types:[...repTypes],memo,resolved:false});
+  }
+  save(); closeModals(); render();
+  toast(`${inSeat}번 좌석 입실 완료 · ${hm(now)}`+(repTypes.size||memo?' · 신고 접수됨':''));
+});
+$('#inName').addEventListener('input',()=>{delete $('#inOk').dataset.force;});
+
+/* ================= 퇴실 ================= */
+let outSeat=0;
+function openOut(n){
+  outSeat=n; const s=byId(db.active[n]); if(!s) return;
+  $('#outSeat').textContent=n;
+  const L=db.settings.awayLimit;
+  $('#outInfo').innerHTML=`<b>${esc(s.name)}</b><br>입실 ${md(s.start)} ${hm(s.start)} · 이용 ${dur(Date.now()-s.start)}`+
+    (s.away?`<br><span style="color:var(--amber);font-weight:700">${hm(s.away)}부터 자리 비움 · ${hm(s.away+awayMs())}까지 안 돌아오면 자동 퇴실</span>`:'');
+  $('#awayArea').innerHTML=s.away
+    ? `<button class="bigbtn back" id="backBtn">자리로 돌아왔어요</button>`
+    : `<button class="bigbtn away" id="awayBtn">잠깐 자리 비움 (최대 ${L}분)</button><div class="hint" style="text-align:center">화장실·전화 등 잠깐만 사용하세요. 식사·다른 학원은 퇴실해야 합니다.</div>`;
+  const ab=$('#awayBtn'), bb=$('#backBtn');
+  if(ab) ab.onclick=()=>{s.away=Date.now();save();closeModals();render();toast(`${outSeat}번 자리 비움 · ${hm(s.away+awayMs())}까지 돌아오세요`);};
+  if(bb) bb.onclick=()=>{(s.awayLog=s.awayLog||[]).push({start:s.away,end:Date.now()});s.away=null;save();closeModals();render();toast(`${outSeat}번 복귀 완료`);};
+  $('#outAgree').checked=false; $('#outOk').disabled=true; show('#outModal');
+}
+$('#outAgree').addEventListener('change',()=>{$('#outOk').disabled=!$('#outAgree').checked;});
+$('#outOk').addEventListener('click',()=>{
+  const s=byId(db.active[outSeat]);
+  if(s){s.end=Date.now();s.endType='manual';if(s.away){(s.awayLog=s.awayLog||[]).push({start:s.away,end:s.end});s.away=null;}}
+  delete db.active[outSeat]; save(); closeModals(); render();
+  toast(`${outSeat}번 좌석 퇴실 완료 · 수고했어요!`);
+});
+
+/* ================= PIN ================= */
+let pinBuf='';
+$('#pad').innerHTML=['1','2','3','4','5','6','7','8','9','지움','0','확인'].map(k=>`<button data-k="${k}" ${k.length>1?'style="font-size:18px"':''}>${k}</button>`).join('');
+function drawPin(){document.querySelectorAll('#pinDots span').forEach((d,i)=>d.classList.toggle('f',i<pinBuf.length));}
+$('#pad').addEventListener('click',e=>{
+  const b=e.target.closest('[data-k]'); if(!b) return; const k=b.dataset.k;
+  $('#pinErr').textContent='';
+  if(k==='지움') pinBuf=pinBuf.slice(0,-1);
+  else if(k==='확인'||pinBuf.length>=3&&k.length===1){
+    if(k.length===1) pinBuf+=k;
+    if(pinBuf===db.settings.pin){pinBuf='';drawPin();closeModals();openAdmin();return;}
+    if(pinBuf.length===4){$('#pinErr').textContent='비밀번호가 틀렸습니다';pinBuf='';}
+  } else pinBuf+=k;
+  drawPin();
+});
+$('#gearBtn').addEventListener('click',()=>{pinBuf='';drawPin();$('#pinErr').textContent='';show('#pinModal');});
+
+/* ================= 관리자 ================= */
+let tab='now', logF={from:'',to:'',seat:'',name:''}, seatSel=1, showDone=false;
+function openAdmin(){$('#admin').classList.add('on');drawAdmin();}
+$('#adminClose').addEventListener('click',()=>{$('#admin').classList.remove('on');render();});
+$('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(!b)return;tab=b.dataset.tab;drawAdmin();});
+
+function endTag(s){
+  if(!s.end) return s.away?'<span class="tag auto">자리 비움 중</span>':'<span class="tag live">사용 중</span>';
+  if(s.endType==='away') return '<span class="tag rep">자리비움 초과 퇴실</span>';
+  if(s.endType==='auto') return '<span class="tag auto">미퇴실(자동)</span>';
+  if(s.endType==='admin') return '<span class="tag adm">관리자 퇴실</span>';
+  if(s.endType==='move') return '<span class="tag adm">자리 이동</span>';
+  return '';
+}
+function repOf(sid){return db.reports.filter(r=>r.sessionId===sid);}
+// 신고 시점 직전에 해당 좌석을 쓴 사람
+function prevUser(r){
+  return db.sessions.filter(s=>s.seat===r.seat&&s.id!==r.sessionId&&s.start<r.time)
+    .sort((a,b)=>b.start-a.start)[0]||null;
+}
+function sessRow(s,opts={}){
+  const reps=repOf(s.id);
+  const end=s.end?hm(s.end):'-';
+  const usedMs=(s.end||Date.now())-s.start;
+  return `<tr${opts.hl?' class="hl"':''}><td>${md(s.start)}</td><td><b>${s.seat}</b>번</td><td><b>${esc(s.name)}</b></td><td>${hm(s.start)}</td><td>${end}</td><td>${dur(usedMs)}</td><td>${endTag(s)}${reps.length?'<span class="tag rep">입실 시 신고</span>':''}</td></tr>`;
+}
+const TH='<tr><th>날짜</th><th>좌석</th><th>이름</th><th>입실</th><th>퇴실</th><th>이용</th><th>비고</th></tr>';
+
+function drawAdmin(){
+  document.querySelectorAll('#tabs .tab').forEach(t=>t.classList.toggle('on',t.dataset.tab===tab));
+  const open=db.reports.filter(r=>!r.resolved).length; const rc=$('#repCnt'); rc.hidden=!open; rc.textContent=open;
+  const B=$('#abody');
+  if(tab==='now'){
+    const act=Object.entries(db.active).map(([seat,sid])=>byId(sid)).filter(Boolean).sort((a,b)=>a.seat-b.seat);
+    B.innerHTML=`<div class="card"><h3>현재 사용 중 ${act.length}명 / ${db.settings.seatCount}석</h3>${act.length?`<table><tr><th>좌석</th><th>이름</th><th>입실</th><th>이용 시간</th><th></th></tr>${act.map(s=>`<tr><td><b>${s.seat}</b>번</td><td><b>${esc(s.name)}</b></td><td>${md(s.start)} ${hm(s.start)}</td><td>${dur(Date.now()-s.start)}${s.away?` <span class="tag auto">${hm(s.away)}부터 자리 비움</span>`:''}</td><td style="text-align:right"><button class="sbtn dan" data-kick="${s.seat}">강제 퇴실</button></td></tr>`).join('')}</table>`:'<div class="empty">사용 중인 좌석이 없습니다</div>'}</div>
+    <div class="card"><h3>오늘 요약</h3>${todaySummary()}</div>`;
+    B.querySelectorAll('[data-kick]').forEach(b=>b.onclick=()=>{
+      const n=+b.dataset.kick; const s=byId(db.active[n]);
+      if(!confirm(`${n}번 ${s?s.name:''} 학생을 퇴실 처리할까요?`))return;
+      if(s){s.end=Date.now();s.endType='admin';} delete db.active[n]; save(); drawAdmin();
+    });
+  }
+  else if(tab==='log'){
+    if(!logF.from){logF.from=ymd(Date.now()-6*864e5);logF.to=ymd(Date.now());}
+    B.innerHTML=`<div class="card"><div class="filters">
+      <div class="f"><label>시작일</label><input type="date" class="sm" id="fFrom" value="${logF.from}"></div>
+      <div class="f"><label>종료일</label><input type="date" class="sm" id="fTo" value="${logF.to}"></div>
+      <div class="f"><label>좌석</label><select class="sm" id="fSeat"><option value="">전체</option>${seatList().map(n=>`<option ${String(n)===logF.seat?'selected':''}>${n}</option>`).join('')}</select></div>
+      <div class="f"><label>이름</label><input class="sm" id="fName" value="${esc(logF.name)}" placeholder="이름 검색" style="width:140px"></div>
+      <button class="sbtn" id="fCsv">엑셀(CSV) 저장</button>
+    </div><div id="logOut"></div></div>`;
+    const run=()=>{
+      logF={from:$('#fFrom').value,to:$('#fTo').value,seat:$('#fSeat').value,name:$('#fName').value.trim()};
+      const rows=filterLog(); $('#logOut').innerHTML=rows.length?`<div class="hint" style="margin-bottom:8px">${rows.length}건</div><div style="overflow:auto"><table>${TH}${rows.map(s=>sessRow(s)).join('')}</table></div>`:'<div class="empty">기록이 없습니다</div>';
+    };
+    ['fFrom','fTo','fSeat'].forEach(id=>$('#'+id).onchange=run); $('#fName').oninput=run;
+    $('#fCsv').onclick=()=>exportCsv(filterLog());
+    run();
+  }
+  else if(tab==='seat'){
+    const rs=openReportSeats();
+    const list=db.sessions.filter(s=>s.seat===seatSel).sort((a,b)=>b.start-a.start).slice(0,60);
+    const reps=db.reports.filter(r=>r.seat===seatSel).sort((a,b)=>b.time-a.time);
+    B.innerHTML=`<div class="card"><h3>좌석 선택</h3><div class="seatpick">${seatList().map(n=>`<button data-ps="${n}" class="${n===seatSel?'on':''} ${rs.has(n)?'r':''}">${n}</button>`).join('')}</div><div class="hint">빨간 테두리 = 처리 안 된 신고가 있는 좌석</div></div>
+    <div class="card"><h3>${seatSel}번 좌석 최근 사용자 (최신순)</h3><div class="hint" style="margin-bottom:10px">책상에 문제가 발견되면, 위에서부터 차례로 거슬러 올라가며 확인하세요. 입실 시 신고 기록이 있으면 그 직전 사용자 시간대에 생긴 문제입니다.</div>
+    ${list.length?`<div style="overflow:auto"><table>${TH}${list.map((s,i)=>sessRow(s,{hl:reps.some(r=>{const p=prevUser(r);return p&&p.id===s.id;})})).join('')}</table></div><div class="hint" style="margin-top:8px">노란 줄 = 다음 사용자가 입실하면서 문제를 신고한 이용 기록</div>`:'<div class="empty">아직 기록이 없습니다</div>'}</div>`;
+    B.querySelectorAll('[data-ps]').forEach(b=>b.onclick=()=>{seatSel=+b.dataset.ps;drawAdmin();});
+  }
+  else if(tab==='rep'){
+    const list=db.reports.filter(r=>showDone||!r.resolved).sort((a,b)=>b.time-a.time);
+    B.innerHTML=`<div class="row" style="margin-bottom:14px"><label class="row" style="gap:6px;font-weight:600"><input type="checkbox" id="showDone" ${showDone?'checked':''} style="width:20px;height:20px">처리 완료된 신고도 보기</label></div>
+    ${list.length?list.map(r=>{const p=prevUser(r);return `<div class="rep-item ${r.resolved?'done':''}">
+      <div class="hd"><b>${r.seat}번 좌석</b><span style="color:var(--ink2);font-size:14px">${md(r.time)} ${hm(r.time)} · 신고자 ${esc(r.name)}</span></div>
+      <div>${(r.types||[]).map(t=>`<span class="tag rep">${esc(t)}</span>`).join('')}</div>
+      ${r.memo?`<div class="memo">${esc(r.memo)}</div>`:'<div style="height:8px"></div>'}
+      <div class="prev">${p?`직전 사용자: <b>${esc(p.name)}</b> · ${md(p.start)} ${hm(p.start)} ~ ${p.end?hm(p.end):'?'} ${p.endType==='auto'?'(퇴실 버튼 안 누름)':''}`:'직전 사용 기록이 없습니다'}</div>
+      <div class="row" style="margin-top:10px"><button class="sbtn" data-go="${r.seat}">이 좌석 이력 보기</button><button class="sbtn ${r.resolved?'':'pri'}" data-res="${r.id}">${r.resolved?'미처리로 되돌리기':'처리 완료'}</button></div>
+    </div>`;}).join(''):'<div class="card empty">신고 내역이 없습니다</div>'}`;
+    $('#showDone').onchange=e=>{showDone=e.target.checked;drawAdmin();};
+    B.querySelectorAll('[data-res]').forEach(b=>b.onclick=()=>{const r=db.reports.find(x=>x.id===b.dataset.res);r.resolved=!r.resolved;save();drawAdmin();});
+    B.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{seatSel=+b.dataset.go;tab='seat';drawAdmin();});
+  }
+  else if(tab==='set'){
+    const S=db.settings;
+    B.innerHTML=`<div class="card"><h3>기본 설정</h3><div class="set">
+      <label>화면 제목</label><input class="sm" id="sTitle" value="${esc(S.title)}">
+      <label>좌석 배치</label><div><select class="sm" id="sLayout"><option value="room" ${S.layout==='room'?'selected':''}>실제 자습실 배치도 (43석)</option><option value="grid" ${S.layout!=='room'?'selected':''}>바둑판 격자</option></select><div class="hint">배치도: 출입문 쪽부터 아래쪽 벽 1~11 · 가운데 섬 아래 12~21 · 가운데 섬 위 22~31 · 위쪽 벽 32~43 (각 줄 오른쪽부터)</div></div>
+      <label>좌석 수 (격자)</label><input class="sm" id="sCount" type="number" min="1" max="200" value="${S.seatCount}">
+      <label>한 줄 좌석 수 (격자)</label><input class="sm" id="sCols" type="number" min="3" max="15" value="${S.cols}">
+      <label>사용 불가 좌석</label><div><input class="sm" id="sDis" value="${(S.disabled||[]).join(', ')}" placeholder="예) 12, 30"><div class="hint">고장·수리 중인 좌석 번호를 쉼표로 구분</div></div>
+      <label>입실 시작 시각</label><div><input class="sm" id="sOpen" type="time" value="${S.openTime}"><div class="hint">자동 퇴실 시각부터 이 시각 전까지는 입실할 수 없습니다 (두 시각을 같게 하면 24시간 입실 가능)</div></div>
+      <label>자동 퇴실 시각</label><div><input class="sm" id="sClose" type="time" value="${S.closeTime}"><div class="hint">00:00 = 밤 12시(자정). 이 시각까지 퇴실 버튼을 안 누르면 자동 퇴실되고 '미퇴실'로 기록됩니다</div></div>
+      <label>자리 비움 허용 시간</label><div><input class="sm" id="sAway" type="number" min="5" max="120" value="${S.awayLimit}"> 분<div class="hint">'자리 비움'을 누르고 이 시간 안에 복귀하지 않으면 자동 퇴실됩니다</div></div>
+      <label>관리자 비밀번호</label><div><input class="sm" id="sPin" inputmode="numeric" maxlength="4" value="${S.pin}"><div class="hint">숫자 4자리 (처음 비밀번호: 0000 → 꼭 바꿔 주세요)</div></div>
+    </div><div class="row" style="margin-top:16px"><button class="sbtn pri" id="sSave">설정 저장</button></div></div>
+    <div class="card"><h3>백업 · 내보내기</h3>
+      <div class="hint" style="margin-bottom:12px">기록은 이 태블릿의 브라우저에만 저장됩니다. 브라우저 데이터를 지우면 기록도 사라지니, 한 달에 한 번 정도 백업 파일을 받아 두세요.<br>현재 기록 ${db.sessions.length}건 · 신고 ${db.reports.length}건</div>
+      <div class="row"><button class="sbtn" id="bCsv">전체 기록 엑셀(CSV)</button><button class="sbtn" id="bJson">백업 파일 저장</button><button class="sbtn" id="bRestore">백업 파일 불러오기</button></div></div>
+    <div class="card"><h3>정리</h3><div class="row">
+      <select class="sm" id="pDays"><option value="90">90일</option><option value="180" selected>180일</option><option value="365">1년</option></select>
+      <button class="sbtn dan" id="pOld">이전 기록 삭제</button>
+      <button class="sbtn dan" id="pAll">모든 기록 초기화</button>
+    </div><div class="hint">삭제 전에 백업 파일을 먼저 받아 두는 것을 권장합니다.</div></div>
+    <div class="card"><h3>태블릿 화면</h3><div class="row"><button class="sbtn" id="fs">전체화면 켜기</button></div><div class="hint">화면이 꺼지지 않도록 태블릿 설정에서 '화면 자동 꺼짐'을 길게 해 두세요.</div></div>`;
+    $('#sSave').onclick=()=>{
+      const pin=$('#sPin').value.trim();
+      if(!/^\d{4}$/.test(pin)){alert('비밀번호는 숫자 4자리로 해 주세요');return;}
+      const layout=$('#sLayout').value;
+      const cnt=layout==='room'?43:Math.max(1,Math.min(200,parseInt($('#sCount').value)||43));
+      S.layout=layout;
+      const busyOver=Object.keys(db.active).map(Number).filter(n=>n>cnt);
+      if(busyOver.length){alert(`사용 중인 좌석(${busyOver.join(', ')}번)이 있어 좌석 수를 줄일 수 없습니다`);return;}
+      Object.assign(S,{title:$('#sTitle').value.trim()||'자습실',seatCount:cnt,cols:Math.max(3,Math.min(15,parseInt($('#sCols').value)||9)),
+        closeTime:$('#sClose').value||'00:00',openTime:$('#sOpen').value||'09:00',pin,awayLimit:Math.max(5,Math.min(120,parseInt($('#sAway').value)||30)),
+        disabled:$('#sDis').value.split(/[,\s]+/).map(Number).filter(n=>n>=1&&n<=cnt&&!db.active[n])});
+      save(); render(); toast('설정을 저장했습니다'); drawAdmin();
+    };
+    $('#bCsv').onclick=()=>exportCsv([...db.sessions].sort((a,b)=>a.start-b.start));
+    $('#bJson').onclick=()=>download(`자습실백업_${ymd(Date.now())}.json`,JSON.stringify(db,null,1),'application/json');
+    $('#bRestore').onclick=()=>$('#restoreFile').click();
+    $('#pOld').onclick=()=>{
+      const days=+$('#pDays').value; const lim=Date.now()-days*864e5;
+      const keep=new Set(Object.values(db.active));
+      const n=db.sessions.filter(s=>s.start<lim&&!keep.has(s.id)).length;
+      if(!confirm(`${days}일 이전 기록 ${n}건을 삭제할까요? 되돌릴 수 없습니다.`))return;
+      db.sessions=db.sessions.filter(s=>s.start>=lim||keep.has(s.id)); db.reports=db.reports.filter(r=>r.time>=lim);
+      save(); drawAdmin(); toast(n+'건 삭제했습니다');
+    };
+    $('#pAll').onclick=()=>{
+      if(!confirm('사용 중 좌석을 포함한 모든 기록을 지웁니다. 되돌릴 수 없습니다. 계속할까요?'))return;
+      if(prompt('확인을 위해 "초기화"라고 입력하세요')!=='초기화')return;
+      db.active={};db.sessions=[];db.reports=[]; save(); render(); drawAdmin(); toast('초기화했습니다');
+    };
+    $('#fs').onclick=()=>{const el=document.documentElement;(el.requestFullscreen||el.webkitRequestFullscreen||function(){}).call(el);};
+  }
+}
+function todaySummary(){
+  const t0=new Date();t0.setHours(0,0,0,0);
+  const today=db.sessions.filter(s=>s.start>=t0.getTime());
+  const people=new Set(today.map(s=>normName(s.name))).size;
+  const auto=today.filter(s=>s.endType==='auto').length;
+  const rep=db.reports.filter(r=>r.time>=t0.getTime()).length;
+  return `<div class="row" style="gap:24px;font-size:16px"><span>입실 <b>${today.length}</b>회</span><span>이용 학생 <b>${people}</b>명</span><span>신고 <b style="color:var(--warn)">${rep}</b>건</span></div>`+
+   (()=>{const y=new Date(t0);y.setDate(y.getDate()-1);const a=db.sessions.filter(s=>s.endType==='auto'&&s.end>=y.getTime());return a.length?`<div class="hint" style="margin-top:10px">최근 퇴실 버튼을 안 누른 학생: ${a.map(s=>esc(s.name)+'('+s.seat+'번)').join(', ')}</div>`:'';})();
+}
+function filterLog(){
+  const from=logF.from?new Date(logF.from+'T00:00:00').getTime():0;
+  const to=logF.to?new Date(logF.to+'T23:59:59').getTime():Infinity;
+  const nm=normName(logF.name||'');
+  return db.sessions.filter(s=>s.start>=from&&s.start<=to&&(!logF.seat||s.seat===+logF.seat)&&(!nm||normName(s.name).includes(nm)))
+    .sort((a,b)=>b.start-a.start);
+}
+function download(name,text,type){
+  const blob=new Blob([text],{type}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+}
+function exportCsv(rows){
+  const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  const lab={manual:'정상 퇴실',auto:'미퇴실(자동)',admin:'관리자 퇴실',move:'자리 이동',away:'자리비움 초과'};
+  const lines=[['날짜','좌석','이름','입실','퇴실','이용(분)','퇴실 구분','입실 시 신고'].map(q).join(',')];
+  rows.forEach(s=>{const r=repOf(s.id).map(x=>[...(x.types||[]),x.memo].filter(Boolean).join('/')).join('; ');
+    lines.push([ymd(s.start),s.seat,s.name,hm(s.start),s.end?hm(s.end):'',Math.round(((s.end||Date.now())-s.start)/60000),s.end?lab[s.endType]||'':'사용 중',r].map(q).join(','));});
+  download(`자습실기록_${ymd(Date.now())}.csv`,'﻿'+lines.join('\r\n'),'text/csv;charset=utf-8');
+}
+$('#restoreFile').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return; const rd=new FileReader();
+  rd.onload=()=>{try{const d=JSON.parse(rd.result);if(!d||!Array.isArray(d.sessions))throw 0;
+      if(!confirm(`백업(기록 ${d.sessions.length}건)으로 현재 데이터를 바꿀까요?`))return;
+      db=Object.assign(JSON.parse(JSON.stringify(DEFAULTS)),d); db.settings=Object.assign({},DEFAULTS.settings,d.settings||{});
+      save(); render(); drawAdmin(); toast('백업을 불러왔습니다');
+    }catch(err){alert('올바른 백업 파일이 아닙니다');}
+    e.target.value='';};
+  rd.readAsText(f);
+});
+
+/* ================= 자동 업데이트 =================
+   웹 주소로 열었을 때만 동작: 5분마다 새 버전을 확인하고, 아무 창도 열려 있지 않을 때 새로고침 */
+const APP_VERSION='2026-11-23.1';
+async function checkUpdate(){
+  if(!/^https?:/.test(location.protocol)) return;
+  if(document.querySelector('.scrim.on')||$('#admin').classList.contains('on')) return;
+  try{
+    const r=await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'});
+    if(!r.ok) return;
+    const m=(await r.text()).match(/APP_VERSION='([^']+)'/);
+    if(m&&m[1]!==APP_VERSION) location.reload();
+  }catch(e){}
+}
+setInterval(checkUpdate,5*60000);
+
+/* ================= 시작 ================= */
+// 다른 탭/창에서 바뀐 내용 반영
+window.addEventListener('storage',e=>{if(e.key===KEY){load();render();}});
+// 화면 꺼짐 방지 (지원 브라우저만)
+let wl=null; async function wake(){try{if('wakeLock' in navigator&&!wl){wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',()=>wl=null);}}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){wake();autoCheckout();render();}});
+document.addEventListener('pointerdown',wake,{once:true});
+autoCheckout(); render(); tick();
+setInterval(tick,1000);
+setInterval(()=>{autoCheckout(); if(!document.querySelector('.scrim.on')) render(); if($('#admin').classList.contains('on')&&tab==='now') drawAdmin();},30000);
+})();
+</script>
+</body>
+</html>
